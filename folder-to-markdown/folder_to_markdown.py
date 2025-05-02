@@ -6,151 +6,211 @@ import hashlib
 import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext
 from tkinter.font import Font
-import markdown
-from PIL import Image, ImageTk
-import mimetypes
 import json
 import threading
-from functools import partial
-from pathlib import Path
+import sys
 
 class FolderToMarkdown:
     def __init__(self, root):
         self.root = root
         self.root.title("Folder to Markdown")
         self.root.geometry("1200x800")
-        
+
         # Set application icon
         try:
             icon_path = self.resource_path("icon.png")
             self.root.iconphoto(True, tk.PhotoImage(file=icon_path))
         except:
             pass  # If icon not found, use default
-        
+
+        # Apply a modern theme if available
+        self.set_theme()
+
         # Default excluded files and folders
         self.excluded_dirs = [
             'node_modules', '.git', '__pycache__', 'venv', 'env',
             'dist', 'build', '.vscode', '.webpack', '.idea', '.cache', '.idea', 'out'
         ]
-        
+
         self.excluded_files = [
             'env.ts', 'secret.ts', '.env', '.gitignore', '.DS_Store', 'LICENSE', 'package-lock.json'
         ]
-        
+
         self.excluded_extensions = [
             '.jpg', '.jpeg', '.png', '.gif', '.ico', '.svg', '.bmp',
             '.mp3', '.mp4', '.avi', '.mov', '.flv', '.zip', '.tar',
-            '.gz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', 
+            '.gz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib',
             '.pyc', '.o', '.obj', '.d.ts', '.webp', 'icns', 'ico'
         ]
-        
+
         # Store file hashes for change detection
         self.file_hashes = {}
-        
+
         # Store last selected folder
         self.selected_folder = None
-        
+
         # Last markdown output
         self.last_markdown = ""
-        
+
         # Default output filename
         self.output_filename = "README.md"
-        
-        # Create the main frame
-        self.main_frame = ttk.Frame(self.root)
-        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Create the control panel at the top
+
+        # Create the main frame with padding
+        self.main_frame = ttk.Frame(self.root, padding="10")
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Create the control panel at the top with modern styling
         self.control_frame = ttk.Frame(self.main_frame)
-        self.control_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        # Folder selection
-        ttk.Label(self.control_frame, text="Folder:").pack(side=tk.LEFT, padx=(0, 5))
+        self.control_frame.pack(fill=tk.X, pady=(0, 15))
+
+        # Folder selection - improved layout with container frame
+        folder_container = ttk.Frame(self.control_frame)
+        folder_container.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+
+        ttk.Label(folder_container, text="Folder:").pack(side=tk.LEFT, padx=(0, 5))
         self.folder_var = tk.StringVar()
-        self.folder_entry = ttk.Entry(self.control_frame, textvariable=self.folder_var, width=40)
+        self.folder_entry = ttk.Entry(folder_container, textvariable=self.folder_var, width=40)
         self.folder_entry.pack(side=tk.LEFT, padx=(0, 5), fill=tk.X, expand=True)
-        
-        self.browse_button = ttk.Button(self.control_frame, text="Browse", command=self.browse_folder)
-        self.browse_button.pack(side=tk.LEFT, padx=(0, 10))
-        
-        # Output filename
-        ttk.Label(self.control_frame, text="Output:").pack(side=tk.LEFT, padx=(0, 5))
+
+        self.browse_button = ttk.Button(folder_container, text="Browse", command=self.browse_folder,
+                                        style="Accent.TButton")
+        self.browse_button.pack(side=tk.LEFT, padx=(5, 0))
+
+        # Output filename - in its own container frame
+        output_container = ttk.Frame(self.control_frame)
+        output_container.pack(side=tk.LEFT, padx=(0, 10))
+
+        ttk.Label(output_container, text="Output:").pack(side=tk.LEFT, padx=(0, 5))
         self.output_var = tk.StringVar(value=self.output_filename)
-        self.output_entry = ttk.Entry(self.control_frame, textvariable=self.output_var, width=20)
+        self.output_entry = ttk.Entry(output_container, textvariable=self.output_var, width=20)
         self.output_entry.pack(side=tk.LEFT, padx=(0, 5))
-        
-        # Refresh button
-        self.refresh_button = ttk.Button(self.control_frame, text="Refresh", command=self.refresh_markdown)
-        self.refresh_button.pack(side=tk.LEFT, padx=(0, 5))
-        
-        # Save button
-        self.save_button = ttk.Button(self.control_frame, text="Save", command=self.save_markdown)
-        self.save_button.pack(side=tk.LEFT, padx=(0, 5))
-        
-        # Exclusion settings button
-        self.settings_button = ttk.Button(self.control_frame, text="Exclusion Settings", command=self.show_exclusion_settings)
-        self.settings_button.pack(side=tk.LEFT, padx=(0, 5))
-        
-        # Create paned window for the two main areas
+
+        # Button container frame for better alignment
+        button_container = ttk.Frame(self.control_frame)
+        button_container.pack(side=tk.LEFT)
+
+        # Modern-styled buttons
+        self.refresh_button = ttk.Button(button_container, text="Refresh", command=self.refresh_markdown,
+                                         style="TButton")
+        self.refresh_button.pack(side=tk.LEFT, padx=5)
+
+        self.save_button = ttk.Button(button_container, text="Save", command=self.save_markdown, style="Accent.TButton")
+        self.save_button.pack(side=tk.LEFT, padx=5)
+
+        self.settings_button = ttk.Button(button_container, text="Exclusion Settings",
+                                          command=self.show_exclusion_settings)
+        self.settings_button.pack(side=tk.LEFT, padx=5)
+
+        # Create paned window with improved styling
         self.paned_window = ttk.PanedWindow(self.main_frame, orient=tk.HORIZONTAL)
-        self.paned_window.pack(fill=tk.BOTH, expand=True)
-        
-        # Left side - Tree structure
-        self.tree_frame = ttk.Frame(self.paned_window)
+        self.paned_window.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        # Left side - Tree structure with frame and header
+        self.tree_frame = ttk.Frame(self.paned_window, padding=(5, 0, 0, 0))
         self.paned_window.add(self.tree_frame, weight=1)
-        
-        ttk.Label(self.tree_frame, text="Folder Structure").pack(fill=tk.X)
-        
-        # Create treeview with scrollbar
-        self.tree_scrollbar = ttk.Scrollbar(self.tree_frame)
+
+        tree_header = ttk.Frame(self.tree_frame)
+        tree_header.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(tree_header, text="Folder Structure", font=('', 10, 'bold')).pack(side=tk.LEFT)
+
+        # Create treeview with scrollbar in a container
+        tree_view_frame = ttk.Frame(self.tree_frame)
+        tree_view_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.tree_scrollbar = ttk.Scrollbar(tree_view_frame)
         self.tree_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.tree = ttk.Treeview(self.tree_frame, yscrollcommand=self.tree_scrollbar.set)
+
+        self.tree = ttk.Treeview(tree_view_frame, yscrollcommand=self.tree_scrollbar.set, style="Custom.Treeview")
         self.tree.pack(fill=tk.BOTH, expand=True)
         self.tree_scrollbar.config(command=self.tree.yview)
-        
+
         # Configure tree columns
         self.tree["columns"] = ("status")
         self.tree.column("#0", width=300, minwidth=200)
         self.tree.column("status", width=50, minwidth=50, anchor=tk.CENTER)
         self.tree.heading("#0", text="Path")
         self.tree.heading("status", text="Status")
-        
-        # Right side - Markdown preview
-        self.markdown_frame = ttk.Frame(self.paned_window)
+
+        # Right side - Markdown preview with frame and header
+        self.markdown_frame = ttk.Frame(self.paned_window, padding=(5, 0, 0, 0))
         self.paned_window.add(self.markdown_frame, weight=1)
-        
-        ttk.Label(self.markdown_frame, text="Markdown Preview").pack(fill=tk.X)
-        
-        # Create markdown preview with scrollbar
-        self.preview_scrollbar = ttk.Scrollbar(self.markdown_frame)
+
+        markdown_header = ttk.Frame(self.markdown_frame)
+        markdown_header.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(markdown_header, text="Markdown Preview", font=('', 10, 'bold')).pack(side=tk.LEFT)
+
+        # Create markdown preview with scrollbar in a container
+        preview_container = ttk.Frame(self.markdown_frame)
+        preview_container.pack(fill=tk.BOTH, expand=True)
+
+        self.preview_scrollbar = ttk.Scrollbar(preview_container)
         self.preview_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # HTML preview widget
-        self.preview = tk.Text(self.markdown_frame, wrap=tk.WORD, yscrollcommand=self.preview_scrollbar.set)
+
+        # HTML preview widget with improved styling
+        self.preview = tk.Text(preview_container, wrap=tk.WORD, yscrollcommand=self.preview_scrollbar.set,
+                               background="#f8f9fa", borderwidth=1, relief=tk.SOLID)
         self.preview.pack(fill=tk.BOTH, expand=True)
         self.preview_scrollbar.config(command=self.preview.yview)
-        
-        # Configure text tags for markdown rendering
-        self.preview.tag_configure("h1", font=Font(family="Helvetica", size=18, weight="bold"))
-        self.preview.tag_configure("h2", font=Font(family="Helvetica", size=16, weight="bold"))
-        self.preview.tag_configure("h3", font=Font(family="Helvetica", size=14, weight="bold"))
-        self.preview.tag_configure("code", font=Font(family="Courier", size=10), background="#f0f0f0")
-        self.preview.tag_configure("bold", font=Font(family="Helvetica", weight="bold"))
-        self.preview.tag_configure("italic", font=Font(family="Helvetica", slant="italic"))
-        
-        # Status bar
+
+        # Configure text tags for markdown rendering with improved fonts
+        self.preview.tag_configure("h1", font=Font(family="Segoe UI", size=18, weight="bold"))
+        self.preview.tag_configure("h2", font=Font(family="Segoe UI", size=16, weight="bold"))
+        self.preview.tag_configure("h3", font=Font(family="Segoe UI", size=14, weight="bold"))
+        self.preview.tag_configure("code", font=Font(family="Consolas", size=10), background="#f0f0f5")
+        self.preview.tag_configure("bold", font=Font(family="Segoe UI", weight="bold"))
+        self.preview.tag_configure("italic", font=Font(family="Segoe UI", slant="italic"))
+
+        # Status bar with modern styling
         self.status_var = tk.StringVar(value="Ready")
-        self.status_bar = ttk.Label(self.main_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        self.status_bar = ttk.Label(self.main_frame, textvariable=self.status_var,
+                                    relief=tk.GROOVE, padding=(5, 2))
         self.status_bar.pack(fill=tk.X, side=tk.BOTTOM, pady=(5, 0))
-        
+
         # Load settings if they exist
         self.load_settings()
-        
+
         # Auto-refresh thread
         self.stop_auto_refresh = threading.Event()
         self.auto_refresh_thread = threading.Thread(target=self.auto_refresh_loop, daemon=True)
         self.auto_refresh_thread.start()
+
+    def set_theme(self):
+        """Set a modern theme for the application"""
+        try:
+            # Try to use the modern 'azure' theme if available
+            self.root.tk.call('source', self.resource_path('azure.tcl'))
+            self.root.tk.call('set_theme', 'light')
+        except:
+            # Fall back to styling directly if theme not available
+            style = ttk.Style()
+
+            # Create custom styles for key elements
+            style.configure("TFrame", background="#f5f5f7")
+            style.configure("TLabel", background="#f5f5f7", font=('Segoe UI', 10))
+            style.configure("TEntry", fieldbackground="white")
+
+            # Style for buttons
+            style.configure("TButton", font=('Segoe UI', 10), padding=5)
+            style.configure("Accent.TButton", font=('Segoe UI', 10, 'bold'), padding=5)
+
+            # Style for Treeview
+            style.configure("Custom.Treeview", background="#ffffff", fieldbackground="#ffffff", font=('Segoe UI', 9))
+            style.configure("Custom.Treeview.Heading", font=('Segoe UI', 10, 'bold'))
+
+            # Try to set system color scheme
+            try:
+                self.root.tk.call('tk', 'scaling', 1.0)  # Improve DPI scaling
+
+                # Check platform for theme adaptations
+                if os.name == 'nt':  # Windows
+                    self.root.configure(background="#f5f5f7")
+                elif sys.platform == 'darwin':  # macOS
+                    self.root.configure(background="#f5f5f7")
+                else:  # Linux and others
+                    self.root.configure(background="#f5f5f7")
+            except:
+                pass
+
 
     def resource_path(self, relative_path):
         """Get absolute path to resource, works for dev and for PyInstaller"""
@@ -190,65 +250,82 @@ class FolderToMarkdown:
                 json.dump(config, f, indent=2)
         except:
             self.show_error("Failed to save settings")
-    
+
     def show_exclusion_settings(self):
-        """Show a dialog for configuring exclusion settings"""
+        """Show a dialog for configuring exclusion settings with modern styling"""
         settings_window = tk.Toplevel(self.root)
         settings_window.title("Exclusion Settings")
         settings_window.geometry("600x500")
         settings_window.grab_set()  # Make window modal
-        
-        notebook = ttk.Notebook(settings_window)
-        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
+
+        # Apply the same styling to the settings window
+        settings_window.configure(background="#f5f5f7")
+
+        # Add padding around the content
+        main_frame = ttk.Frame(settings_window, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Create a tabbed interface
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
         # Excluded directories tab
-        dir_frame = ttk.Frame(notebook)
+        dir_frame = ttk.Frame(notebook, padding=5)
         notebook.add(dir_frame, text="Excluded Directories")
-        
-        dirs_text = scrolledtext.ScrolledText(dir_frame)
-        dirs_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        dir_label = ttk.Label(dir_frame, text="Enter directories to exclude (one per line):")
+        dir_label.pack(anchor=tk.W, pady=(0, 5))
+
+        dirs_text = scrolledtext.ScrolledText(dir_frame, font=('Consolas', 10))
+        dirs_text.pack(fill=tk.BOTH, expand=True)
         dirs_text.insert(tk.END, "\n".join(self.excluded_dirs))
-        
+
         # Excluded files tab
-        file_frame = ttk.Frame(notebook)
+        file_frame = ttk.Frame(notebook, padding=5)
         notebook.add(file_frame, text="Excluded Files")
-        
-        files_text = scrolledtext.ScrolledText(file_frame)
-        files_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        file_label = ttk.Label(file_frame, text="Enter files to exclude (one per line):")
+        file_label.pack(anchor=tk.W, pady=(0, 5))
+
+        files_text = scrolledtext.ScrolledText(file_frame, font=('Consolas', 10))
+        files_text.pack(fill=tk.BOTH, expand=True)
         files_text.insert(tk.END, "\n".join(self.excluded_files))
-        
+
         # Excluded extensions tab
-        ext_frame = ttk.Frame(notebook)
+        ext_frame = ttk.Frame(notebook, padding=5)
         notebook.add(ext_frame, text="Excluded Extensions")
-        
-        exts_text = scrolledtext.ScrolledText(ext_frame)
-        exts_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        ext_label = ttk.Label(ext_frame, text="Enter extensions to exclude (one per line):")
+        ext_label.pack(anchor=tk.W, pady=(0, 5))
+
+        exts_text = scrolledtext.ScrolledText(ext_frame, font=('Consolas', 10))
+        exts_text.pack(fill=tk.BOTH, expand=True)
         exts_text.insert(tk.END, "\n".join(self.excluded_extensions))
-        
-        # Buttons frame
-        btn_frame = ttk.Frame(settings_window)
-        btn_frame.pack(fill=tk.X, padx=10, pady=10)
-        
+
+        # Buttons frame with modern styling
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X, pady=10)
+
         def save_and_close():
             # Update exclusion lists
             self.excluded_dirs = [d.strip() for d in dirs_text.get("1.0", tk.END).split("\n") if d.strip()]
             self.excluded_files = [f.strip() for f in files_text.get("1.0", tk.END).split("\n") if f.strip()]
             self.excluded_extensions = [e.strip() for e in exts_text.get("1.0", tk.END).split("\n") if e.strip()]
-            
+
             # Save settings
             self.save_settings()
-            
+
             # Refresh if a folder is selected
             if self.selected_folder:
                 self.refresh_markdown()
-            
+
             settings_window.destroy()
-        
-        save_btn = ttk.Button(btn_frame, text="Save", command=save_and_close)
-        save_btn.pack(side=tk.RIGHT, padx=5)
-        
+
         cancel_btn = ttk.Button(btn_frame, text="Cancel", command=settings_window.destroy)
         cancel_btn.pack(side=tk.RIGHT, padx=5)
+
+        save_btn = ttk.Button(btn_frame, text="Save", command=save_and_close, style="Accent.TButton")
+        save_btn.pack(side=tk.RIGHT, padx=5)
     
     def browse_folder(self):
         """Open a folder picker dialog and select a folder"""
