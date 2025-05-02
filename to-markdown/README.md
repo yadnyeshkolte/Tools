@@ -32,25 +32,23 @@ A Python application that create markdown document from a folder structure. This
 
 ### Method 2: Manual Installation
 
-1. Clone or download this repository
-2. Install the required dependencies:
-    
-    ```
-    sudo apt-get updatesudo apt-get install python3 python3-pip python3-tk python3-pil python3-pil.imagetkpip3 install markdown
-    ```
-    
-3. Make the application executable:
-    
-    ```
-    chmod +x folder_to_markdown.py
-    ```
-    
-4. Run the application:
-    
-    ```
-    ./folder_to_markdown.py
-    ```
-    
+```python
+# Install required system packages
+sudo apt update
+sudo apt install python3-full python3-tk python3-pil python3-pil.imagetk
+
+# Create a virtual environment
+python3 -m venv ~/to-markdown-venv
+
+# Activate the virtual environment
+source ~/to-markdown-venv/bin/activate
+
+# Install required Python packages in the virtual environment
+pip install markdown Pillow
+
+# Now you can run the application from the virtual environment
+python folder_to_markdown.py
+```
 
 ## Building the Debian Package
 
